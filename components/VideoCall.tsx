@@ -4,9 +4,9 @@ import { useSocket } from "@/context/SocketContext";
 import VideoContainer from "./VideoContainer";
 
 const VideoCall = () => {
-  const { localStream, connectedUsersStream } = useSocket();
+  const { localStream, remoteStream } = useSocket();
 
-  console.log(connectedUsersStream)
+  // console.log("Streams: ", localStream, remoteStream);
   return (
     <div className="flex items-center justify-center gap-4">
       {localStream && (
@@ -16,15 +16,13 @@ const VideoCall = () => {
           isOnCall={false}
         />
       )}
-      {connectedUsersStream?.length &&
-        connectedUsersStream?.map((connectedUserStream, index) => (
-          <VideoContainer
-            key={connectedUserStream.userId+index}
-            stream={connectedUserStream.stream}
-            isLocalStream={true}
-            isOnCall={false}
-          />
-        ))}
+      {remoteStream && (
+        <VideoContainer
+          stream={remoteStream}
+          isLocalStream={false}
+          isOnCall={false}
+        />
+      )}
     </div>
   );
 };

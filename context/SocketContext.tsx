@@ -7,23 +7,20 @@ import {
   useState,
 } from "react";
 import { io, Socket } from "socket.io-client";
-import Peer, { SimplePeerData } from "simple-peer";
+import { Peer } from "peerjs";
+import { DefaultEventsMap } from "@socket.io/component-emitter";
 
 interface iSocketContext {
   localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
   connectedUsersStream: iSocketStream[] | null;
-  handleCall: () => {};
+  handleCall: (userId: string) => Promise<void>;
 }
 
 interface iSocketStream {
   socketId: string;
   userId: string;
-  stream: MediaStream;
-}
-
-interface PeerData {
-  peerConnection: Peer.Instance;
-  stream: MediaStream | undefined;
+  peerId: string;
 }
 
 export const SocketContext = createContext<iSocketContext | null>(null);
@@ -37,10 +34,11 @@ export const SocketContextProvider = ({
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connectedUsersStream, setConnectedUserStream] = useState<
     iSocketStream[] | null
   >(null);
-  const [peer, setPeer] = useState<PeerData | null>(null);
+  const [peer, setPeer] = useState<Peer | null>(null);
 
   const getMediaStream = useCallback(
     async (faceMode?: string) => {
@@ -73,110 +71,98 @@ export const SocketContextProvider = ({
     [localStream]
   );
 
-  const handleClose = () => {};
-  const createPeer = useCallback((stream: MediaStream, initiator: boolean) => {
-    const iceServers: RTCIceServer[] = [
-      {
-        urls: [
-          "stun:stun.l.google.com:19302",
-          "stun:stun1.l.google.com:19302",
-          "stun:stun2.l.google.com:19302",
-          "stun:stun3.l.google.com:19302",
-        ],
-      },
-    ];
-
-    const peer = new Peer({
-      stream,
-      initiator,
-      trickle: true,
-      config: { iceServers },
-    });
-
-    peer.on("stream", (stream) => {
-      setPeer((prev) => {
-        if (prev) {
-          return { ...prev, stream };
-        }
-
-        return prev;
-      });
-    });
-
-    peer.on("error", console.error);
-    peer.on("close", () => handleClose);
-
-    const rtcPeerConnection: RTCPeerConnection = (peer as any)._pc;
-    rtcPeerConnection.oniceconnectionstatechange = async () => {
-      if (
-        rtcPeerConnection.iceConnectionState === "disconnected" ||
-        rtcPeerConnection.iceConnectionState === "failed"
-      ) {
-        handleClose();
+  const handleCall = useCallback(
+    async (peerId: string) => {
+      const stream = await getMediaStream();
+      if (!stream) return;
+      if (user) {
+        console.log("Handle Call: ", peer, peerId)
+        peer?.call(peerId, stream);
       }
-    };
-
-    return peer;
-  }, []);
-
-  const handleCall = useCallback(async () => {
-    const stream = await getMediaStream();
-    if (!stream) return;
-    socket?.emit("call", { userId: user?.id, stream: stream });
-  }, [socket]);
+    },
+    [socket, peer]
+  );
 
   // initialise socket
   useEffect(() => {
-    const newSocket = io();
-    setSocket(newSocket);
+    let socket: Socket<DefaultEventsMap, DefaultEventsMap> | null = null;
+    let newPeer: Peer;
+    if (user) {
+      newPeer = new Peer(user.id);
 
-    return () => {
-      newSocket?.disconnect();
-    };
-  }, [user]);
+      newPeer.on("call", async (call) => {
+        console.log("Stream call: ", call)
+        const stream = await getMediaStream();
+        if (stream) {
+          call.answer(stream);
+          call.on("stream", (remoteStream) => {
+            console.log("Remote stream: ", remoteStream)
+            setRemoteStream(remoteStream);
+          });
+        }
+      });
 
-  useEffect(() => {
-    if (socket === null) return;
-    if (socket.connected) {
-      onConnect();
+      socket = io();
+      setSocket(socket);
+      setPeer(newPeer);
+
+      if (socket === null) return;
+      if (socket.connected) {
+        onConnect();
+      }
+
+      socket.on("connect", onConnect);
+      socket.on("disconnect", onDisconnect);
+      socket.on("userList", handleUserList);
     }
 
     function onConnect() {
       setIsSocketConnected(true);
+      socket?.emit("join", {
+        userId: user?.id,
+        peerId: newPeer?.id,
+      });
+      console.log("OnConnect - Peer: ", peer);
     }
+
     function onDisconnect() {
       setIsSocketConnected(false);
     }
 
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
+    function handleUserList(data: any) {
+      console.log("user list: ", data);
 
-    return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-    };
-  }, [socket]);
-
-  useEffect(() => {
-    if (!socket || !isSocketConnected) return;
-
-    function handleNewCall(streams: iSocketStream[]) {
-      setConnectedUserStream(streams);
+      setConnectedUserStream(data);
     }
 
-    socket.on("newCall", handleNewCall);
-
     return () => {
-      socket.off("newCall", handleNewCall);
+      socket?.off("connect", onConnect);
+      socket?.off("disconnect", onDisconnect);
+      socket?.off("userList", handleUserList);
+      socket?.disconnect();
+      newPeer?.destroy();
     };
-  }, [socket, isSocketConnected, user]);
+  }, [user]);
+
+  // useEffect(() => {
+  //   if (!socket || !isSocketConnected) return;
+  //   function handleNewCall(connectedUsersStream: iSocketStream[]) {
+  //     setConnectedUserStream(connectedUsersStream);
+  //   }
+
+  //   socket.on("newCall", handleNewCall);
+  //   return () => {
+  //     socket.off("newCall", handleNewCall);
+  //   };
+  // }, [socket, isSocketConnected, user]);
 
   return (
     <SocketContext.Provider
       value={{
         localStream,
+        remoteStream,
         connectedUsersStream,
-        handleCall,
+        handleCall
       }}
     >
       {children}

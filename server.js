@@ -14,18 +14,25 @@ app.prepare().then(() => {
 
   const io = new Server(httpServer);
 
-  let streams = [];
+  let connectedUsers = [];
 
   io.on("connection", (socket) => {
-    socket.on("call", ({ userId, stream }) => {
-      !streams.some((stream) => stream.socketId === socket.id) &&
-        streams.push({ socketId: socket.socketId, userId, stream });
-      io.emit("newCall", streams);
+    socket.on("join", (user) => {
+      if (!connectedUsers.some((u) => u.userId === user.userId)) {
+        connectedUsers.push({
+          socketId: socket.id,
+          userId: user.userId,
+          peerId: user.peerId,
+        });
+        io.emit("userList", connectedUsers);
+      }
     });
 
     socket.on("disconnect", () => {
-      streams = streams.filter((stream) => stream.socketId !== socket.id);
-      io.emit("newCall", streams);
+      connectedUsers = connectedUsers.filter(
+        (user) => user.socketId !== socket.id
+      );
+      io.emit("userList", connectedUsers);
     });
   });
 
