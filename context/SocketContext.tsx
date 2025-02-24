@@ -1,6 +1,8 @@
 import { useUser } from "@clerk/nextjs";
 import {
   createContext,
+  Dispatch,
+  SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -15,6 +17,8 @@ interface iSocketContext {
   remoteStream: MediaStream | null;
   connectedUsersStream: iSocketStream[] | null;
   handleCall: (userId: string) => Promise<void>;
+  interest: String[] | [];
+  setInterest: Dispatch<SetStateAction<[] | String[]>>;
 }
 
 interface iSocketStream {
@@ -38,6 +42,7 @@ export const SocketContextProvider = ({
   const [connectedUsersStream, setConnectedUserStream] = useState<
     iSocketStream[] | null
   >(null);
+  const [interest, setInterest] = useState<String[] | []>([]);
   const [peer, setPeer] = useState<Peer | null>(null);
 
   const getMediaStream = useCallback(
@@ -76,7 +81,6 @@ export const SocketContextProvider = ({
       const stream = await getMediaStream();
       if (!stream) return;
       if (user) {
-        console.log("Handle Call: ", peer, peerId)
         peer?.call(peerId, stream);
       }
     },
@@ -91,12 +95,10 @@ export const SocketContextProvider = ({
       newPeer = new Peer(user.id);
 
       newPeer.on("call", async (call) => {
-        console.log("Stream call: ", call)
         const stream = await getMediaStream();
         if (stream) {
           call.answer(stream);
           call.on("stream", (remoteStream) => {
-            console.log("Remote stream: ", remoteStream)
             setRemoteStream(remoteStream);
           });
         }
@@ -121,8 +123,8 @@ export const SocketContextProvider = ({
       socket?.emit("join", {
         userId: user?.id,
         peerId: newPeer?.id,
+        interest: interest,
       });
-      console.log("OnConnect - Peer: ", peer);
     }
 
     function onDisconnect() {
@@ -130,9 +132,8 @@ export const SocketContextProvider = ({
     }
 
     function handleUserList(data: any) {
-      console.log("user list: ", data);
-
-      setConnectedUserStream(data);
+      const connectedUserList = data.filter((u: any) => u.userId !== user?.id);
+      setConnectedUserStream(connectedUserList);
     }
 
     return () => {
@@ -144,17 +145,17 @@ export const SocketContextProvider = ({
     };
   }, [user]);
 
-  // useEffect(() => {
-  //   if (!socket || !isSocketConnected) return;
-  //   function handleNewCall(connectedUsersStream: iSocketStream[]) {
-  //     setConnectedUserStream(connectedUsersStream);
-  //   }
+  useEffect(() => {
+    if (socket) {
+      socket?.emit("join", {
+        userId: user?.id,
+        peerId: peer?.id,
+        interest: interest,
+      });
+    }
+  }, [interest]);
 
-  //   socket.on("newCall", handleNewCall);
-  //   return () => {
-  //     socket.off("newCall", handleNewCall);
-  //   };
-  // }, [socket, isSocketConnected, user]);
+  // console.log(connectedUsersStream)
 
   return (
     <SocketContext.Provider
@@ -162,7 +163,9 @@ export const SocketContextProvider = ({
         localStream,
         remoteStream,
         connectedUsersStream,
-        handleCall
+        handleCall,
+        interest,
+        setInterest,
       }}
     >
       {children}

@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import next from "next";
-import { Server } from "socket.io";
+import createSocketServer from "./lib/server.js"
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
@@ -11,30 +11,7 @@ const handler = app.getRequestHandler();
 
 app.prepare().then(() => {
   const httpServer = createServer(handler);
-
-  const io = new Server(httpServer);
-
-  let connectedUsers = [];
-
-  io.on("connection", (socket) => {
-    socket.on("join", (user) => {
-      if (!connectedUsers.some((u) => u.userId === user.userId)) {
-        connectedUsers.push({
-          socketId: socket.id,
-          userId: user.userId,
-          peerId: user.peerId,
-        });
-        io.emit("userList", connectedUsers);
-      }
-    });
-
-    socket.on("disconnect", () => {
-      connectedUsers = connectedUsers.filter(
-        (user) => user.socketId !== socket.id
-      );
-      io.emit("userList", connectedUsers);
-    });
-  });
+  createSocketServer(httpServer)
 
   httpServer
     .once("error", (err) => {
