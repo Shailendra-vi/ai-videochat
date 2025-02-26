@@ -7,6 +7,8 @@ const VideoCall = () => {
   const { localStream, remoteStream } = useSocket();
 
   // console.log("Streams: ", localStream, remoteStream);
+  if(!localStream || !remoteStream) return null;
+  
   return (
     <div className="flex items-center justify-center gap-4">
       {localStream && (

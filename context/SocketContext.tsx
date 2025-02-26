@@ -15,10 +15,10 @@ import { DefaultEventsMap } from "@socket.io/component-emitter";
 interface iSocketContext {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
-  connectedUsersStream: iSocketStream[] | null;
-  handleCall: (userId: string) => Promise<void>;
   interest: String[] | [];
   setInterest: Dispatch<SetStateAction<[] | String[]>>;
+  peer: Peer | null;
+  socket: Socket | null;
 }
 
 interface iSocketStream {
@@ -91,8 +91,9 @@ export const SocketContextProvider = ({
   useEffect(() => {
     let socket: Socket<DefaultEventsMap, DefaultEventsMap> | null = null;
     let newPeer: Peer;
+
     if (user) {
-      newPeer = new Peer(user.id);
+      newPeer = new Peer();
 
       newPeer.on("call", async (call) => {
         const stream = await getMediaStream();
@@ -115,57 +116,56 @@ export const SocketContextProvider = ({
 
       socket.on("connect", onConnect);
       socket.on("disconnect", onDisconnect);
-      socket.on("userList", handleUserList);
+      // socket.on("userList", handleUserList);
     }
 
     function onConnect() {
+      console.log("Socket connected: ", socket?.id, peer?.id);
       setIsSocketConnected(true);
-      socket?.emit("join", {
-        userId: user?.id,
-        peerId: newPeer?.id,
-        interest: interest,
-      });
     }
 
     function onDisconnect() {
       setIsSocketConnected(false);
     }
 
-    function handleUserList(data: any) {
-      const connectedUserList = data.filter((u: any) => u.userId !== user?.id);
-      setConnectedUserStream(connectedUserList);
-    }
-
     return () => {
       socket?.off("connect", onConnect);
       socket?.off("disconnect", onDisconnect);
-      socket?.off("userList", handleUserList);
       socket?.disconnect();
       newPeer?.destroy();
     };
   }, [user]);
 
   useEffect(() => {
-    if (socket) {
-      socket?.emit("join", {
-        userId: user?.id,
-        peerId: peer?.id,
-        interest: interest,
-      });
-    }
-  }, [interest]);
+    if (!socket) return;
 
-  // console.log(connectedUsersStream)
+    socket.on("match", async (remotePeerId: string) => {
+      console.log("Remote peerId: ", remotePeerId);
+      if (!peer) return;
+      const stream = await getMediaStream();
+      if (!stream) return;
+      setLocalStream(stream);
+      
+      const call = peer.call(remotePeerId, stream);
+      call.on("stream", (remoteStream: MediaStream) => {
+        setRemoteStream(remoteStream);
+      });
+    });
+
+    return () => {
+      socket.off("match");
+    };
+  }, [socket]);
 
   return (
     <SocketContext.Provider
       value={{
         localStream,
         remoteStream,
-        connectedUsersStream,
-        handleCall,
         interest,
         setInterest,
+        peer,
+        socket
       }}
     >
       {children}

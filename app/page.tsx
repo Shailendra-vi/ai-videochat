@@ -9,13 +9,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import VideoCall from "@/components/VideoCall";
 import { useSocket } from "@/context/SocketContext";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function Home() {
-  const { handleCall, connectedUsersStream, interest, setInterest } =
-    useSocket();
+  const { interest, setInterest, peer, socket } = useSocket();
+  const [name, setName] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
-  const interestOption = [
+  const interestOptions = [
     {
       name: "Cricket",
       value: "cricket",
@@ -33,19 +34,6 @@ export default function Home() {
       value: "tabletennis",
     },
   ];
-  useEffect(() => {
-    async function generateEmbedd() {
-      const response = await fetch("/api/embeddings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ interest: ["cricket", "football"] }),
-      });
-
-      const data = await response.json();
-      console.log(data);
-    }
-    generateEmbedd();
-  }, []);
 
   const handleClick = (item: { name: string; value: string }) => {
     if (!interest.some((s) => s === item.value)) {
@@ -55,29 +43,57 @@ export default function Home() {
     }
   };
 
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <div className="flex flex-col items-center justify-center gap-2">
-        <VideoCall />
+  const handleSubmit = async () => {
+    if (!name || interest.length === 0 || !peer || !socket) return;
 
-        <div className="flex items-center justify-center">
-          {connectedUsersStream?.map((user) => (
-            <Button
-              key={user.userId}
-              variant={"outline"}
-              onClick={() => handleCall(user.peerId)}
-            >
-              {user.userId.substring(0, 10)}
-            </Button>
-          ))}
-        </div>
+    const response = await fetch("/api/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        interests: interest,
+        peerId: peer.id,
+        socketId: socket.id,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Embeddings API data", data);
+
+      const response2 = await fetch(`/api/match/${data.user._id}`, {
+        method: "POST",
+      });
+
+      if (response2.ok) {
+        const data2 = await response2.json();
+        console.log("Match API data", data2);
+        setSubmitted(true);
+      }
+    }
+  };
+
+  if (submitted) {
+    return <VideoCall />;
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="bg-white p-8 rounded-lg shadow-md space-y-4">
+        <input
+          type="text"
+          placeholder="Your Name"
+          className="w-full p-2 border rounded"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline">Open</Button>
+            <Button variant="outline">Select Interests</Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56">
-            {interestOption.map((item) => (
+          <DropdownMenuContent>
+            {interestOptions.map((item) => (
               <DropdownMenuCheckboxItem
                 key={item.name}
                 checked={interest.some((s) => s === item.value)}
@@ -88,6 +104,14 @@ export default function Home() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Button
+          onClick={handleSubmit}
+          disabled={!name || interest.length === 0}
+          className="w-full"
+        >
+          Start Matching
+        </Button>
       </div>
     </div>
   );
