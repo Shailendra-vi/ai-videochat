@@ -10,7 +10,6 @@ export async function matchUsers(userId: any) {
   try {
     if (!userId) return;
     await connectToDatabase();
-    // console.log("User searching: ", user.isSearching);
 
     const interval = setInterval(async () => {
       const user = await VUser.findById(userId);
@@ -34,16 +33,13 @@ export async function matchUsers(userId: any) {
           bestMatch = candidate;
         }
       }
-      // console.log(bestMatch, maxSimilarity, user._id, candidates);
-      if (bestMatch && maxSimilarity > 0.5) {
 
-        // console.log("************************Settitng falase: ", user._id, bestMatch._id);
+      if (bestMatch && maxSimilarity > 0.5) {
         await VUser.updateMany(
           { _id: { $in: [user._id, bestMatch._id] } },
           { $set: { isSearching: false } }
         );
 
-        console.log(user.socketId, bestMatch.socketId);
         io.to(user.socketId).emit("match", bestMatch.peerId);
         io.to(bestMatch.socketId).emit("match", user.peerId);
 
@@ -54,28 +50,6 @@ export async function matchUsers(userId: any) {
     console.log(err);
   }
 }
-
-// function handleIo(io: any) {
-//   io.on("connection", async (socket: any) => {
-//     socket.on("join", async (userData: UserData) => {
-//       const user: SocketUser | null = await User.findOneAndUpdate(
-//         { peerId: userData.peerId },
-//         { $set: { socketId: socket.id, isSearching: true } },
-//         { new: true }
-//       );
-//       if (!user) return;
-//       matchUsers(user);
-
-//       socket.on("disconnect", async () => {
-//         const user: SocketUser | null = await User.findOneAndUpdate(
-//           { peerId: userData.peerId },
-//           { $set: { socketId: socket.id, isSearching: false } },
-//           { new: true }
-//         );
-//       });
-//     });
-//   });
-// }
 
 export function getIo() {
   if (!global.io) {

@@ -14,10 +14,10 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-    // user.isSearching = true;
-    // await user.save();
+    user.isSearching = true;
+    await user.save();
 
-    console.log("USer: ", user);
+    // console.log("USer: ", user);
     matchUsers(userId);
 
     return NextResponse.json({ success: true, user });

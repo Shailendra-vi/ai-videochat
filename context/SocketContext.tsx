@@ -13,18 +13,15 @@ import { Peer } from "peerjs";
 import { DefaultEventsMap } from "@socket.io/component-emitter";
 
 interface iSocketContext {
+  userData: any;
+  setUserData: Dispatch<SetStateAction<any> | null>;
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
-  interest: String[] | [];
-  setInterest: Dispatch<SetStateAction<[] | String[]>>;
+  setLocalStream: Dispatch<SetStateAction<MediaStream | null>>;
+  setRemoteStream: Dispatch<SetStateAction<MediaStream | null>>;
   peer: Peer | null;
   socket: Socket | null;
-}
-
-interface iSocketStream {
-  socketId: string;
-  userId: string;
-  peerId: string;
+  call: any;
 }
 
 export const SocketContext = createContext<iSocketContext | null>(null);
@@ -39,11 +36,9 @@ export const SocketContextProvider = ({
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [connectedUsersStream, setConnectedUserStream] = useState<
-    iSocketStream[] | null
-  >(null);
-  const [interest, setInterest] = useState<String[] | []>([]);
   const [peer, setPeer] = useState<Peer | null>(null);
+  const [userData, setUserData] = useState<any>(null);
+  const [call, setCall] = useState<any>(null);
 
   const getMediaStream = useCallback(
     async (faceMode?: string) => {
@@ -76,17 +71,6 @@ export const SocketContextProvider = ({
     [localStream]
   );
 
-  const handleCall = useCallback(
-    async (peerId: string) => {
-      const stream = await getMediaStream();
-      if (!stream) return;
-      if (user) {
-        peer?.call(peerId, stream);
-      }
-    },
-    [socket, peer]
-  );
-
   // initialise socket
   useEffect(() => {
     let socket: Socket<DefaultEventsMap, DefaultEventsMap> | null = null;
@@ -102,6 +86,12 @@ export const SocketContextProvider = ({
           call.on("stream", (remoteStream) => {
             setRemoteStream(remoteStream);
           });
+
+          call.on("close", () => {
+            setRemoteStream(null);
+          });
+
+          setCall(call)
         }
       });
 
@@ -143,13 +133,20 @@ export const SocketContextProvider = ({
       console.log("Remote peerId: ", remotePeerId);
       if (!peer) return;
       const stream = await getMediaStream();
-      if (!stream) return;
-      setLocalStream(stream);
-      
-      const call = peer.call(remotePeerId, stream);
-      call.on("stream", (remoteStream: MediaStream) => {
-        setRemoteStream(remoteStream);
-      });
+      if (stream) {
+        setLocalStream(stream);
+
+        const call = peer.call(remotePeerId, stream);
+        call.on("stream", (remoteStream: MediaStream) => {
+          setRemoteStream(remoteStream);
+        });
+
+        call.on("close", () => {
+          setRemoteStream(null);
+        });
+
+        setCall(call);
+      }
     });
 
     return () => {
@@ -160,12 +157,15 @@ export const SocketContextProvider = ({
   return (
     <SocketContext.Provider
       value={{
+        userData,
+        setUserData,
         localStream,
         remoteStream,
-        interest,
-        setInterest,
+        setLocalStream,
+        setRemoteStream,
         peer,
-        socket
+        socket,
+        call
       }}
     >
       {children}
